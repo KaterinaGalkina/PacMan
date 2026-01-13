@@ -252,7 +252,7 @@ class OrAndTree {
 
 			Position nextPos = initialState.data.extendsBeliefState(action.action).getBeliefState(0).getPacmanPos();
 
-			if (initialState.data.getPacmanPos().x == nextPos.x && initialState.data.getPacmanPos().x == nextPos.y) {
+			if (initialState.data.getPacmanPos().x == nextPos.x && initialState.data.getPacmanPos().y == nextPos.y) {
 				value -= 50_000;
 			}
 
@@ -328,4 +328,5 @@ class OrAndTree {
 		action.value = value;
 		return value;
 	}
+
 }
