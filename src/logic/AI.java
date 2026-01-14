@@ -1,9 +1,16 @@
 package logic;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 
 /**
@@ -109,19 +116,50 @@ public class AI{/**
 	 * @return a string describing the next action (among PacManLauncher.UP/DOWN/LEFT/RIGHT)
 	 */
 	public static String findNextMove(BeliefState beliefState) {
-		String bestAction = OrAndTree.getNextAction(new NodeBeliefState(beliefState, globalDepth), globalDepth);
-		alreadyBeenHere.add(beliefState.getPacmanPos());
-		// lastAction = bestAction;
-		// Iterator<Position> it = alreadyBeenHere.iterator();
-		
-		// System.out.println("Current state: " + it.next().toString());
-		// scan.nextLine();
+		HashMap<String, Integer> actions;
 
-		if (bestAction == null){
+		if (visitedBeliefStates.containsKey(beliefState) ) {
+			System.out.println("\t\tReusing previous computation for this belief state...");
+    		actions = visitedBeliefStates.get(beliefState);
+		} else {
+			actions = OrAndTree.getNextAction(new NodeBeliefState(beliefState, globalDepth), globalDepth);
+			visitedBeliefStates.put(beliefState, actions);
+		}
+
+		if( nbOfMeets.containsKey(beliefState) ){
+			nbOfMeets.put(beliefState, nbOfMeets.get(beliefState) + 1);
+			System.out.println("\t\tNumber of times we've met this belief state: " + nbOfMeets.get(beliefState));
+		}else{
+			nbOfMeets.put(beliefState, 1);
+		}
+
+		alreadyBeenHere.add(beliefState.getPacmanPos());
+
+		if (actions.size() == 0){
 			System.out.println("\t\tOhhh shit the algo couldn't find an action...");
 			return PacManLauncher.DOWN;
 		}
 
+		LinkedHashMap<String, Integer> sorted = actions.entrySet()
+			.stream()
+			.sorted((e1, e2) -> Integer.compare(e2.getValue(), e1.getValue())) // DESC
+			.collect(
+				LinkedHashMap::new,
+				(m, e) -> m.put(e.getKey(), e.getValue()),
+				Map::putAll
+		);
+
+		Iterator<String> it = sorted.keySet().iterator();
+
+		String bestAction = it.next();
+
+		if (nbOfMeets.get(beliefState) >= 4 && it.hasNext()) {
+			System.out.println("\t\tChoosing second best action because we've been here more than twice...");
+			bestAction = it.next();
+		 } 
+		lastAction = bestAction;
+		System.out.println("Best action: " + bestAction);
+		
 		switch (bestAction) {
 			case "UP":
 				return PacManLauncher.UP;
@@ -135,11 +173,12 @@ public class AI{/**
 				return PacManLauncher.DOWN;
 		}
 	}
-	public static HashSet<Position> alreadyBeenHere = new HashSet<>();
+	public static TreeSet<Position> alreadyBeenHere = new TreeSet<>();
+	public static TreeMap<BeliefState, HashMap<String, Integer>> visitedBeliefStates = new TreeMap<>();
+	public static TreeMap<BeliefState, Integer> nbOfMeets = new TreeMap<>();
 	public static int globalDepth = 2;
 	public static Random rand = new Random();
-	public static Scanner scan = new Scanner(System.in);
-	// public static String lastAction = null;
+	public static String lastAction = null;
 }
 
 class NodeBeliefState {
@@ -168,11 +207,6 @@ class NodeBeliefState {
 	}
 
 	int evaluate() { // Heuristic to evaluate how good the current belief state is
-		// TODO : replace this by somethign else, it scares the pacman to actually advance
-		// if (this.data.getLife() == 0) { // If we are dead huge penalisation
-		// 	return -1_000_000;
-		// }
-
 		if (this.isGoal){ // If we won the game
 			return +1_000_000;
 		}
@@ -181,28 +215,8 @@ class NodeBeliefState {
 
 		score -= 100 * this.data.distanceMinToGum();
 
-		// score -= 150 * this.data.getNbrOfGommes();
-		// score -= 300 * this.data.getNbrOfSuperGommes();
-
-		// // We want to penalize if the pacman is close to the ghost (for each ghost too close), or award if we just had a super gum to eat a ghost
-		// Position pacmanPos = this.data.getPacmanPosition();
-		
-		// for(int i = 0; i < this.data.getNbrOfGhost(); i++){
-		// 	TreeSet<Position> ghPos = this.data.getGhostPositions(i);
-		// 	if (ghPos.size() == 1){ // We are sure where the ghost is, because we can see him
-		// 		double x = Math.abs(ghPos.getFirst().getRow() - pacmanPos.getRow());
-		// 		double y = Math.abs(ghPos.getFirst().getColumn() - pacmanPos.getColumn());
-		// 		double distance = x + y;
-		// 		if (this.data.getCompteurPeur(i) == 0) {
-		// 			return (int)(-100_000 / (distance + 1));
-		// 		} else {
-		// 			return (int) (30_000 / (distance + 1));
-		// 		}
-		// 	}
-		// }
-
 		if (!AI.alreadyBeenHere.contains(this.data.getPacmanPos())) { // Bonus if the position is new
-			score += 20_000;
+			score += 5_000;
 		}
 
 		// What we already grabbed, strong (would be times 10 with each eaten gum), because we want to eat gums as fast as possible
@@ -210,7 +224,7 @@ class NodeBeliefState {
 
 		// return score;
 		// We add a little bit of randomness to prevent plateaux
-		return (int) (AI.rand.nextInt(100) + score);
+		return (int) (score + AI.rand.nextInt(100));
 	}
 }
 
@@ -235,7 +249,7 @@ class OrAndTree {
 		this.depth = depth;
 	}
 
-	static String getNextAction(NodeBeliefState initialState, int depth) {
+	static HashMap<String, Integer> getNextAction(NodeBeliefState initialState, int depth) {
 
 		OrAndTree tree = new OrAndTree(initialState, depth);
 
@@ -244,7 +258,8 @@ class OrAndTree {
 
 		initialState.expandNode(depth);
 
-		NodeAction bestAction = null;
+		HashMap<String, Integer> actions = new HashMap<>();
+		
 		int bestValue = Integer.MIN_VALUE;
 
 		for (NodeAction action : initialState.children) {
@@ -253,32 +268,34 @@ class OrAndTree {
 			Position nextPos = initialState.data.extendsBeliefState(action.action).getBeliefState(0).getPacmanPos();
 
 			if (initialState.data.getPacmanPos().x == nextPos.x && initialState.data.getPacmanPos().y == nextPos.y) {
-				value -= 50_000;
+				value = Integer.MIN_VALUE +1;
 			}
-
-			// if (AI.lastAction != null && isReverse(AI.lastAction, action.action)) { // If it help to escape maybe it is better
-			// 	value -= 5_000;
+			
+			// if (isReverse(AI.lastAction, action.action) == true && AI.alreadyBeenHere.contains(nextPos)) { 
+			// 	System.out.println("\t\tPenalizing reverse action to already visited position: " + action.action
+			// 		+ " to position " + nextPos.x + "," + nextPos.y
+			// 	);
+			// 	value -= AI.rand.nextInt(100);
 			// }
 
 			if (value > bestValue) {
 				bestValue = value;
-				bestAction = action;
 			}
 
+			actions.put(action.action, value);
 			alpha = Math.max(alpha, bestValue);
 		}
-		if (bestAction == null){
-			return null;
-		}
-		return bestAction.action;
+		return actions;
 	}
 
 	static boolean isReverse(String a, String b) {
-		return (a.equals("LEFT") && b.equals("RIGHT")) ||
-			(a.equals("RIGHT") && b.equals("LEFT")) ||
-			(a.equals("UP") && b.equals("DOWN")) ||
-			(a.equals("DOWN") && b.equals("UP"));
+		if (a == null || b == null) return false;
+		return (a.equals("LEFT")  && b.equals("RIGHT")) ||
+			(a.equals("RIGHT") && b.equals("LEFT"))  ||
+			(a.equals("UP")    && b.equals("DOWN"))  ||
+			(a.equals("DOWN")  && b.equals("UP"));
 	}
+
 
 	static int orSearch(NodeBeliefState node, int depth, int alpha, int beta) {
 		if (depth == 0 || node.isGoal) {
@@ -328,5 +345,4 @@ class OrAndTree {
 		action.value = value;
 		return value;
 	}
-
 }
